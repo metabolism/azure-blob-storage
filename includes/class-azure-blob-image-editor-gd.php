@@ -7,7 +7,7 @@ class Azure_Blob_Image_Editor_GD extends WP_Image_Editor_GD
         $saved = parent::save( $destfilename, $mime_type );
 
         if( !is_wp_error( $saved ) )
-            do_action('wp_save_file', $saved['path'],  $saved['mime-type']);
+            do_action('wp_save_file', $saved['path'], $saved['mime-type']);
 
         return $saved;
     }
@@ -19,7 +19,7 @@ class Azure_Blob_Image_Editor_GD extends WP_Image_Editor_GD
         $dir = pathinfo( $this->file, PATHINFO_DIRNAME );
 
         if( !is_wp_error( $saved ) )
-            do_action('wp_save_file', $dir.'/'.$saved['file'],  $saved['mime-type']);
+            do_action('wp_save_file', $dir.'/'.$saved['file'], $saved['mime-type']);
 
         return $saved;
     }
