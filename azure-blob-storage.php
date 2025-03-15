@@ -51,14 +51,22 @@ define( 'AZURE_BLOB_STORAGE_PLUGIN_PATH', plugin_dir_path( __FILE__ ) );
 define( 'AZURE_BLOB_STORAGE_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'AZURE_BLOB_STORAGE_PLUGIN_VERSION', '1.0' );
 
+global $azure_blob_storage_last_error;
+
 /**
  * @param $source_file
- * @return mixed
+ * @param bool $retry_later
+ * @return bool
  */
-function azure_blob_storage_upload_file($source_file)
+function azure_blob_storage_upload_file($source_file, $retry_later=true)
 {
-    if( !file_exists($source_file) )
-        return $source_file;
+    global $azure_blob_storage_last_error;
+
+    if( !file_exists($source_file) ){
+
+        $azure_blob_storage_last_error = 'File does not exist';
+        return false;
+    }
 
     $upload_dir   = wp_upload_dir();
     $replace_file = ltrim(str_replace( $upload_dir['basedir'], '', $source_file ), '/');
@@ -67,22 +75,32 @@ function azure_blob_storage_upload_file($source_file)
     try {
 
         \Windows_Azure_Helper::put_media_to_blob_storage('', $replace_file, $source_file, $mime_type);
+        return true;
 
     } catch ( Exception $e ) {
 
-        $queue = get_option('azure_blob_storage_upload_queue');
+        if( $retry_later ){
 
-        if( !is_array($queue) )
-            $queue = [];
+            $queue = get_option('azure_blob_storage_upload_queue');
 
-        $queue[] = [$source_file, $mime_type, $e->getMessage()];
+            if( !is_array($queue) )
+                $queue = [];
 
-        update_option('azure_blob_storage_upload_queue', $queue);
+            $queue[] = [$source_file, $mime_type, $e->getMessage()];
+
+            update_option('azure_blob_storage_upload_queue', $queue);
+        }
+
+        $azure_blob_storage_last_error = $e->getMessage();
     }
 
-    return $source_file;
+    return false;
 }
 
+/**
+ * @param $source_file
+ * @return mixed
+ */
 function azure_blob_storage_delete_file($source_file)
 {
     $upload_dir   = wp_upload_dir();
@@ -91,6 +109,7 @@ function azure_blob_storage_delete_file($source_file)
     try {
 
         \Windows_Azure_Helper::delete_blob('', $replace_file);
+        return $source_file;
 
     } catch ( Exception $e ) {
 
@@ -134,16 +153,131 @@ add_action( 'init', function () {
 
     }, 10);
 
-   add_filter('wp_get_attachment_url', function ($url){
+    add_filter('wp_get_attachment_url', function ($url){
 
-       if( !defined('MICROSOFT_AZURE_ACCOUNT_URL') )
-           return $url;
+        if( !defined('MICROSOFT_AZURE_ACCOUNT_URL') )
+            return $url;
 
         $upload_dir = wp_upload_dir();
         return str_replace($upload_dir['baseurl'], MICROSOFT_AZURE_ACCOUNT_URL, $url);
     });
 
-    add_action( 'wp_save_file', 'azure_blob_storage_upload_file', 10, 2 );
-    add_filter( 'wp_delete_file', 'azure_blob_storage_delete_file', 10, 2 );
+    add_action( 'wp_save_file', 'azure_blob_storage_upload_file', 10, 1 );
+    add_filter( 'wp_delete_file', 'azure_blob_storage_delete_file', 10, 1 );
+});
+
+add_action( 'admin_notices', function (){
+
+    $queue = get_option('azure_blob_storage_upload_queue');
+
+    if( is_array($queue) )
+        echo '<div class="error"><p>Azure blob : '.count($queue).' file(s) waiting to upload</p></div>';
+});
+
+add_action('sync_upload_queue_to_azure', function () {
+
+    $queue = get_option('azure_blob_storage_upload_queue');
+
+    if( is_array($queue) ){
+
+        $queue = array_values($queue);
+        $nextFile = $queue[0];
+
+        if( azure_blob_storage_upload_file($nextFile, false) ){
+
+            unset($queue[0]);
+            $queue = array_values($queue);
+
+            if( empty($queue) )
+                delete_option('azure_blob_storage_upload_queue');
+            else
+                update_option('azure_blob_storage_upload_queue', $queue);
+        }
+    }
+});
+
+add_action('wp_ajax_sync_to_azure', function () {
+
+    $queue = get_option('azure_blob_storage_sync_queue');
+
+    if( empty($queue) ){
+
+        $upload_dir = wp_get_upload_dir();
+        $queue = list_files($upload_dir['basedir'], 100, ['.gitkeep']);
+
+        update_option('azure_blob_storage_sync_queue', $queue);
+    }
+
+    $queue = array_values($queue);
+    $nextFile = $queue[0];
+
+    if( azure_blob_storage_upload_file($nextFile, false) ){
+
+        unset($queue[0]);
+
+        $queue = array_values($queue);
+
+        if( empty($queue) )
+            delete_option('azure_blob_storage_sync_queue');
+        else
+            update_option('azure_blob_storage_sync_queue', $queue);
+
+        wp_send_json(['message' => 'Upload completed successfully!', 'count' => count($queue)]);
+    }
+    else{
+
+        global $azure_blob_storage_last_error;
+
+        wp_send_json(['message' => 'Upload failed!', 'file'=>$nextFile, 'error'=>$azure_blob_storage_last_error, 'count' => count($queue)]);
+    }
+});
+
+add_action( 'admin_init', function() {
+
+    add_settings_field('upload_to_azure', __('Upload to Azure Storage', 'azure-blob-storage'), function () {
+
+        $queue = get_option('azure_blob_storage_sync_queue');
+
+        if( empty($queue) ){
+
+            $upload_dir = wp_get_upload_dir();
+            $queue = list_files($upload_dir['basedir'], 100, ['.gitkeep']);
+        }
+
+        ?>
+        <a class="button button-primary" id="sync-to-azure">Upload <?php echo count($queue); ?> file(s)</a>
+        <script>
+
+            function azureUploadNextFile($el) {
+
+                fetch(ajaxurl, {
+                    method: "POST",
+                    headers: {"Content-Type": "application/x-www-form-urlencoded"},
+                    body: "action=sync_to_azure"
+                }).then(function(response) {
+
+                    return response.json();
+                }).then(data => {
+
+                    $el.innerHTML = "Uploading... "+data.count+" file(s) left";
+                    azureUploadNextFile($el);
+
+                }).catch(error => {
+
+                    alert(error);
+                });
+            }
+
+            document.getElementById("sync-to-azure").addEventListener("click", function() {
+
+                this.disabled = true;
+                this.innerHTML = "Uploading...";
+
+                azureUploadNextFile(this)
+            })
+        </script>
+        <?php
+
+    }, 'media');
 });
 
