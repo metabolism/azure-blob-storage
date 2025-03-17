@@ -55,6 +55,50 @@ global $azure_blob_storage_last_error;
 
 /**
  * @param $source_file
+ * @return void
+ */
+function azure_blob_storage_set_metadata($source_file)
+{
+    global $azure_blob_storage_list;
+
+    $upload_dir   = wp_upload_dir();
+    $replace_file = ltrim(str_replace( $upload_dir['basedir'], '', $source_file ), '/');
+
+    $azure_blob_storage_list[md5($replace_file)] = 1;
+    file_put_contents(AZURE_BLOB_STORAGE_LIST_FILE, json_encode($azure_blob_storage_list), LOCK_EX);
+}
+
+/**
+ * @param $source_file
+ * @return void
+ */
+function azure_blob_storage_remove_metadata($source_file)
+{
+    global $azure_blob_storage_list;
+
+    $upload_dir   = wp_upload_dir();
+    $replace_file = ltrim(str_replace( $upload_dir['basedir'], '', $source_file ), '/');
+
+    unset($azure_blob_storage_list[md5($replace_file)]);
+    file_put_contents(AZURE_BLOB_STORAGE_LIST_FILE, json_encode($azure_blob_storage_list), LOCK_EX);
+}
+
+/**
+ * @param $source_file
+ * @return bool
+ */
+function azure_blob_storage_get_metadata($source_file)
+{
+    global $azure_blob_storage_list;
+
+    $upload_dir   = wp_upload_dir();
+    $replace_file = ltrim(str_replace( $upload_dir['basedir'], '', $source_file ), '/');
+
+    return isset($azure_blob_storage_list[md5($replace_file)]);
+}
+
+/**
+ * @param $source_file
  * @param bool $retry_later
  * @return bool
  */
@@ -65,7 +109,7 @@ function azure_blob_storage_upload_file($source_file, $retry_later=true)
     if( !file_exists($source_file) ){
 
         $azure_blob_storage_last_error = 'File does not exist';
-        return false;
+        return true;
     }
 
     $upload_dir   = wp_upload_dir();
@@ -75,6 +119,8 @@ function azure_blob_storage_upload_file($source_file, $retry_later=true)
     try {
 
         \Windows_Azure_Helper::put_media_to_blob_storage('', $replace_file, $source_file, $mime_type);
+        azure_blob_storage_set_metadata($source_file);
+
         return true;
 
     } catch ( Exception $e ) {
@@ -109,6 +155,9 @@ function azure_blob_storage_delete_file($source_file)
     try {
 
         \Windows_Azure_Helper::delete_blob('', $replace_file);
+
+        azure_blob_storage_remove_metadata($source_file);
+
         return $source_file;
 
     } catch ( Exception $e ) {
@@ -127,6 +176,8 @@ function azure_blob_storage_delete_file($source_file)
 }
 
 add_action( 'init', function () {
+
+    global $azure_blob_storage_list;
 
     require_once ABSPATH . '/wp-admin/includes/file.php';
     require_once ABSPATH . 'wp-admin/includes/class-wp-filesystem-base.php';
@@ -147,6 +198,14 @@ add_action( 'init', function () {
     require_once AZURE_BLOB_STORAGE_PLUGIN_PATH . 'includes/class-azure-blob-image-editor-gd.php';
     require_once AZURE_BLOB_STORAGE_PLUGIN_PATH . 'includes/class-azure-blob-image-editor-imagick.php';
 
+    $upload_dir = wp_upload_dir();
+    define( 'AZURE_BLOB_STORAGE_LIST_FILE', $upload_dir['basedir'] . '/.azure-blob-storage-list' );
+
+    $azure_blob_storage_list = json_decode(file_get_contents(AZURE_BLOB_STORAGE_LIST_FILE), true);
+
+    if( !is_array($azure_blob_storage_list) )
+        $azure_blob_storage_list = [];
+
     add_filter('wp_image_editors', function ($implementations) {
 
         return array_merge(['Azure_Blob_Image_Editor_GD', 'Azure_Blob_Image_Editor_Imagick'], $implementations);
@@ -159,7 +218,12 @@ add_action( 'init', function () {
             return $url;
 
         $upload_dir = wp_upload_dir();
-        return str_replace($upload_dir['baseurl'], MICROSOFT_AZURE_ACCOUNT_URL, $url);
+        $source_file = str_replace($upload_dir['baseurl'], '', $url);
+
+        if( azure_blob_storage_get_metadata($source_file) )
+            return str_replace($upload_dir['baseurl'], MICROSOFT_AZURE_ACCOUNT_URL, $url);
+
+        return $url;
     });
 
     add_action( 'wp_save_file', 'azure_blob_storage_upload_file', 10, 1 );
@@ -241,7 +305,7 @@ add_action( 'admin_init', function() {
         if( empty($queue) ){
 
             $upload_dir = wp_get_upload_dir();
-            $queue = list_files($upload_dir['basedir'], 100, ['.gitkeep']);
+            $queue = list_files($upload_dir['basedir'], 100, ['.gitkeep', '.azure-blob-storage-list']);
         }
 
         ?>
