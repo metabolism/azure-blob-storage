@@ -267,7 +267,7 @@ add_action('wp_ajax_sync_to_azure', function () {
     if( empty($queue) ){
 
         $upload_dir = wp_get_upload_dir();
-        $queue = list_files($upload_dir['basedir'], 100, ['.gitkeep']);
+        $queue = list_files($upload_dir['basedir'], 100, ['.gitkeep', '.azure-blob-storage-list']);
 
         update_option('azure_blob_storage_sync_queue', $queue);
     }
@@ -298,7 +298,15 @@ add_action('wp_ajax_sync_to_azure', function () {
 
 add_action( 'admin_init', function() {
 
-    add_settings_field('upload_to_azure', __('Upload to Azure Storage', 'azure-blob-storage'), function () {
+    if( isset($_GET['clear-azure-queue']) ){
+
+        delete_option('azure_blob_storage_sync_queue');
+
+        wp_redirect(admin_url('options-media.php'));
+        exit;
+    }
+
+    add_settings_field('upload_to_azure', __('Azure Blob Storage', 'azure-blob-storage'), function () {
 
         $queue = get_option('azure_blob_storage_sync_queue');
 
@@ -310,6 +318,7 @@ add_action( 'admin_init', function() {
 
         ?>
         <a class="button button-primary" id="sync-to-azure">Upload <?php echo count($queue); ?> file(s)</a>
+        <a class="button button-secondary" href="<?php echo admin_url('options-media.php')?>?clear-azure-queue">Clear queue</a>
         <script>
 
             function azureUploadNextFile($el) {
@@ -321,10 +330,15 @@ add_action( 'admin_init', function() {
                 }).then(function(response) {
 
                     return response.json();
+
                 }).then(data => {
 
                     $el.innerHTML = "Uploading... "+data.count+" file(s) left";
-                    azureUploadNextFile($el);
+
+                    if( data.count )
+                        azureUploadNextFile($el);
+                    else
+                        $el.innerHTML = "Upload complete";
 
                 }).catch(error => {
 
