@@ -1,7 +1,7 @@
 {
     "name": "metabolism/azure-blob-storage",
     "type": "wordpress-plugin",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "license": "MIT",
     "description": "Sync WordPress media, including Timber-generated images, with Azure Blob Storage for optimized storage and performance.",
     "keywords": [

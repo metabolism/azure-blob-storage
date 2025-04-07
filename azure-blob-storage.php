@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Azure Blob Storage for WordPress
  * Description:       Use the Microsoft Azure Storage service to host your website's media files.
- * Version:           1.0
+ * Version:           1.0.1
  * Requires at least: 6.4
  * Requires PHP:      8.0
  * Author:            Metabolism, Microsoft Open Technologies
@@ -49,7 +49,7 @@
 
 define( 'AZURE_BLOB_STORAGE_PLUGIN_PATH', plugin_dir_path( __FILE__ ) );
 define( 'AZURE_BLOB_STORAGE_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
-define( 'AZURE_BLOB_STORAGE_PLUGIN_VERSION', '1.0' );
+define( 'AZURE_BLOB_STORAGE_PLUGIN_VERSION', '1.0.1' );
 
 global $azure_blob_storage_last_error;
 
@@ -115,6 +115,9 @@ function azure_blob_storage_upload_file($source_file, $retry_later=true)
     $upload_dir   = wp_upload_dir();
     $replace_file = ltrim(str_replace( $upload_dir['basedir'], '', $source_file ), '/');
     $mime_type    = wp_check_filetype($source_file)['type'];
+
+    if( $mime_type == 'image/svg' )
+        $mime_type = 'image/svg+xml';
 
     try {
 
