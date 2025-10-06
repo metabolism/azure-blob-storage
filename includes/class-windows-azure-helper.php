@@ -492,20 +492,21 @@ class Windows_Azure_Helper {
 		return $sanitize_blobs_names[ $blob_name ][ $blob_name ];
 	}
 
-	/**
-	 * Put media file into Azure storage.
-	 *
-	 * @since 4.0.0
-	 *
-	 * @param string $container_name Container name.
-	 * @param string $blob_name      Blob name.
-	 * @param string $local_path     Local path.
-	 * @param string $mime_type      Mime type.
-	 * @param string $account_name   Account name.
-	 * @param string $account_key    Account key.
-	 *
-	 * @return bool|string|WP_Error False or WP_Error on failure URI on success.
-	 */
+    /**
+     * Put media file into Azure storage.
+     *
+     * @param string $container_name Container name.
+     * @param string $blob_name Blob name.
+     * @param string $local_path Local path.
+     * @param string $mime_type Mime type.
+     * @param string $account_name Account name.
+     * @param string $account_key Account key.
+     *
+     * @return bool|string|WP_Error False or WP_Error on failure URI on success.
+     * @throws Exception
+     * @since 4.0.0
+     *
+     */
 	static public function put_media_to_blob_storage( $container_name, $blob_name, $local_path, $mime_type, $account_name = '', $account_key = '' ) {
 		list( $account_name, $account_key ) = self::get_api_credentials( $account_name, $account_key );
 		$rest_api_client = new Windows_Azure_Rest_Api_Client( $account_name, $account_key );
@@ -514,8 +515,13 @@ class Windows_Azure_Helper {
             $container_name = self::get_container_name();
 
 		$result = $rest_api_client->put_blob( $container_name, $local_path, $blob_name, false, $mime_type );
-		if ( ! $result || is_wp_error( $result ) ) {
-			return $result;
+
+        if ( ! $result || is_wp_error( $result ) ) {
+
+            if( is_wp_error( $result ) )
+                throw new Exception( $result->get_error_message() );
+            else
+                throw new Exception( 'Unknown upload error' );
 		}
 
 		$cache_control = Windows_Azure_Helper::get_cache_control();
