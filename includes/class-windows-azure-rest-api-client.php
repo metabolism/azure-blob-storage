@@ -936,7 +936,7 @@ class Windows_Azure_Rest_Api_Client {
 		}
 
 		if ( 5 === $cycles && $was_sanitized ) {
-			return new WP_Error( -100, __( 'Unable to safely sanitize blob names.', 'windows-azure-storage' ) );
+			return new WP_Error( -1, __( 'Unable to safely sanitize blob names.', 'windows-azure-storage' ) );
 		} else {
 			return $files;
 		}
@@ -1000,7 +1000,11 @@ class Windows_Azure_Rest_Api_Client {
 		$is_valid          = $contents_provider->is_valid();
 
 		if ( ! $is_valid || is_wp_error( $is_valid ) ) {
-			return $is_valid;
+
+            if( !$is_valid )
+                return new \WP_Error( -1, 'File is not readable' );
+
+            return $is_valid;
 		}
 
 		$blob_content = fopen( $contents_provider->get_file_path(), 'r' );
@@ -1011,7 +1015,7 @@ class Windows_Azure_Rest_Api_Client {
 		try {
 			$blobClient->createBlockBlob( $container, $remote_path, $blob_content, $blob_options );
 		} catch ( Exception $exception ) {
-			return new \WP_Error( $exception->getMessage() );
+			return new \WP_Error( -1, $exception->getMessage() );
 		}
 
 		return $this->_build_api_endpoint_url( $container . $remote_path );
@@ -1035,7 +1039,7 @@ class Windows_Azure_Rest_Api_Client {
 		try {
 			$blobClient->copyBlob( $container, $destination_path, $container, $source_path );
 		} catch ( Exception $exception ) {
-			return new \WP_Error( $exception->getMessage() );
+			return new \WP_Error( -1, $exception->getMessage() );
 		}
 		$destination_path = '/' . ltrim( $destination_path, '/' );
 
