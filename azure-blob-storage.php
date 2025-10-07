@@ -106,7 +106,7 @@ function azure_blob_storage_upload_file($source_file, $retry_later=true)
 {
     global $azure_blob_storage_last_error;
 
-    if( !file_exists($source_file) ){
+    if( !file_exists($source_file) || is_dir( $source_file ) ){
 
         $azure_blob_storage_last_error = 'File does not exist';
         return true;
@@ -280,7 +280,7 @@ add_action('wp_ajax_sync_to_azure', function () {
         update_option('azure_blob_storage_sync_queue', $queue);
     }
 
-    $queue = array_values($queue);
+    $queue = array_filter(array_values($queue));
     $nextFile = $queue[0];
 
     if( azure_blob_storage_upload_file($nextFile, false) ){
