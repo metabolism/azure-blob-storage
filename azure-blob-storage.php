@@ -217,14 +217,15 @@ add_action( 'init', function () {
 
     add_filter('wp_get_attachment_url', function ($url){
 
-        if( !defined('MICROSOFT_AZURE_ACCOUNT_URL') )
+        if( !defined('MICROSOFT_AZURE_ACCOUNT_URL') || empty(MICROSOFT_AZURE_ACCOUNT_URL) )
             return $url;
 
         $upload_dir = wp_upload_dir();
         $source_file = str_replace($upload_dir['baseurl'], '', $url);
 
-        if( azure_blob_storage_get_metadata($source_file) )
+        if( azure_blob_storage_get_metadata($source_file) ){
             return str_replace($upload_dir['baseurl'], MICROSOFT_AZURE_ACCOUNT_URL, $url);
+        }
 
         return $url;
     });
@@ -233,6 +234,23 @@ add_action( 'init', function () {
         azure_blob_storage_upload_file($args['file']);
         return $args;
     });
+
+    add_filter( 'pre_attachment_url_to_postid', function ($post_id, $url){
+
+        if( !defined('MICROSOFT_AZURE_ACCOUNT_URL') || empty(MICROSOFT_AZURE_ACCOUNT_URL) )
+            return $post_id;
+
+        if( str_contains($url, MICROSOFT_AZURE_ACCOUNT_URL) ){
+
+            $upload_dir = wp_upload_dir();
+            $source_url = str_replace(MICROSOFT_AZURE_ACCOUNT_URL, $upload_dir['baseurl'], $url);
+
+            return attachment_url_to_postid($source_url);
+        }
+
+        return $post_id;
+
+    },10 ,2);
 
     add_action( 'wp_save_file', 'azure_blob_storage_upload_file', 10, 1 );
     add_filter( 'wp_delete_file', 'azure_blob_storage_delete_file', 10, 1 );
