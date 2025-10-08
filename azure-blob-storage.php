@@ -309,6 +309,8 @@ add_action( 'admin_init', function() {
     if( isset($_GET['clear-azure-queue']) ){
 
         delete_option('azure_blob_storage_sync_queue');
+        delete_option('azure_blob_storage_delete_queue');
+        delete_option('azure_blob_storage_upload_queue');
 
         wp_redirect(admin_url('options-media.php'));
         exit;
